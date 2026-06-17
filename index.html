@@ -31,7 +31,9 @@
             --border: rgba(255, 255, 255, 0.08);
             --grad-cloud: linear-gradient(135deg, #00D4FF, #0066FF);
             --grad-design: linear-gradient(135deg, #8B5CF6, #EC4899);
+            --grad-sql: linear-gradient(135deg, #F59E0B, #EF4444);
             --grad-both: linear-gradient(135deg, #00D4FF 0%, #8B5CF6 50%, #EC4899 100%);
+            --amber: #F59E0B;
             --nav-h: 64px;
         }
 
@@ -860,6 +862,10 @@
             background: var(--grad-design)
         }
 
+        .tab-btn.active.sql-tab {
+            background: var(--grad-sql)
+        }
+
         .projects-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -875,6 +881,14 @@
             cursor: default;
         }
 
+        a.project-card {
+            cursor: pointer;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+            touch-action: manipulation;
+        }
+
         .project-card:hover {
             transform: translateY(-6px)
         }
@@ -887,6 +901,11 @@
         .design-card:hover {
             border-color: rgba(139, 92, 246, .3);
             box-shadow: 0 20px 40px rgba(139, 92, 246, .1)
+        }
+
+        .sql-card:hover {
+            border-color: rgba(245, 158, 11, .3);
+            box-shadow: 0 20px 40px rgba(245, 158, 11, .08)
         }
 
         .project-thumb {
@@ -907,6 +926,10 @@
             background: linear-gradient(135deg, #1A0533, #2D0B52)
         }
 
+        .sql-card .project-thumb {
+            background: linear-gradient(135deg, #1C1204, #361F05)
+        }
+
         .project-thumb-glow {
             position: absolute;
             width: 70px;
@@ -922,6 +945,10 @@
 
         .design-card .project-thumb-glow {
             background: var(--purple)
+        }
+
+        .sql-card .project-thumb-glow {
+            background: var(--amber)
         }
 
         .project-body {
@@ -943,6 +970,10 @@
             color: var(--lavender)
         }
 
+        .sql-card .project-num {
+            color: var(--amber)
+        }
+
         .project-name {
             font-family: 'Syne', sans-serif;
             font-size: .95rem;
@@ -955,6 +986,52 @@
             color: var(--slate);
             font-size: .81rem;
             line-height: 1.6
+        }
+
+        .project-links {
+            display: flex;
+            gap: 10px;
+            margin-top: 16px;
+        }
+
+        .project-link-btn {
+            flex: 1;
+            padding: 8px 14px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            font-weight: 600;
+            text-align: center;
+            text-decoration: none;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+
+        .project-link-btn.primary {
+            background: var(--grad-cloud);
+            color: #fff;
+            border: none;
+        }
+
+        .project-link-btn.primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 212, 255, 0.3);
+        }
+
+        .project-link-btn.secondary {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--slate);
+        }
+
+        .project-link-btn.secondary:hover {
+            border-color: var(--cyan);
+            color: var(--cyan);
+            background: rgba(0, 212, 255, 0.05);
         }
 
         .tab-panel {
@@ -2017,6 +2094,7 @@
         <div class="projects-tabs">
             <button class="tab-btn active" onclick="switchTab('cloud',this)">☁️ Cloud Projects</button>
             <button class="tab-btn design-tab" onclick="switchTab('design',this)">✦ UI/UX Projects</button>
+            <button class="tab-btn sql-tab" onclick="switchTab('sql',this)">🛢️ SQL / MySQL Projects</button>
         </div>
         <div id="cloud-panel" class="tab-panel active">
             <div class="projects-grid">
@@ -2089,28 +2167,62 @@
                         <p class="project-desc">Designed a complete mobile application for on-demand fuel delivery and
                             vehicle assistance — user research, wireframes, prototypes, and final UI designs included.
                         </p>
+                        <div class="project-links">
+                            <a href="https://www.figma.com/proto/VVTMHDyySVx0hKOhyLVnn3/case-study?node-id=4-5"
+                                target="_blank" rel="noopener noreferrer" class="project-link-btn secondary">UX Case
+                                Study</a>
+                            <a href="https://fuel-on-demand-hero.lovable.app" target="_blank" rel="noopener noreferrer"
+                                class="project-link-btn primary">Prototype Website</a>
+                        </div>
                     </div>
                 </div>
                 <div class="project-card design-card reveal">
                     <div class="project-thumb">
-                        <div class="project-thumb-glow"></div>📈
+                        <div class="project-thumb-glow"></div>👟
                     </div>
                     <div class="project-body">
                         <div class="project-num">UX — 02</div>
-                        <div class="project-name">Modern Dashboard Design</div>
-                        <p class="project-desc">Designed a responsive analytics dashboard applying modern UI principles,
-                            data visualization best practices, and accessible color systems.</p>
+                        <div class="project-name">Sweat – Sportswear Mobile App</div>
+                        <p class="project-desc">A modern mobile app designed for a sportswear brand, offering a seamless
+                            shopping experience with intuitive navigation, clean visuals, and user-friendly
+                            interactions.</p>
+                        <div class="project-links">
+                            <a href="https://www.behance.net/gallery/220950059/sweat-sports-brand-fashion-app/modules/1260380299"
+                                target="_blank" rel="noopener noreferrer" class="project-link-btn secondary">UX Case
+                                Study</a>
+                            <a href="https://www.behance.net/gallery/220950529/sweat-landing-page-case-study/modules/1260383219"
+                                target="_blank" rel="noopener noreferrer" class="project-link-btn primary">Landing
+                                Page</a>
+                        </div>
                     </div>
                 </div>
-                <div class="project-card design-card reveal">
+
+            </div>
+        </div>
+        <div id="sql-panel" class="tab-panel">
+            <div class="projects-grid">
+                <div class="project-card sql-card reveal">
                     <div class="project-thumb">
-                        <div class="project-thumb-glow"></div>🎨
+                        <div class="project-thumb-glow"></div>🛢️
                     </div>
                     <div class="project-body">
-                        <div class="project-num">UX — 03</div>
-                        <div class="project-name">Mobile App Design System</div>
-                        <p class="project-desc">Created a scalable design system with reusable components, token-based
-                            styling, and comprehensive documentation for cross-platform consistency.</p>
+                        <div class="project-num">SQL — 01</div>
+                        <div class="project-name">E-Commerce Relational Database Schema</div>
+                        <p class="project-desc">Designed a highly optimized relational database schema with full
+                            normalization (3NF), structured index configurations, and triggers for auto-updating stock
+                            availability.</p>
+                    </div>
+                </div>
+                <div class="project-card sql-card reveal">
+                    <div class="project-thumb">
+                        <div class="project-thumb-glow"></div>🐬
+                    </div>
+                    <div class="project-body">
+                        <div class="project-num">SQL — 02</div>
+                        <div class="project-name">University Database Management System</div>
+                        <p class="project-desc">Created a MySQL student enrollment and grading records database using
+                            complex transaction controls, custom views, and stored functions to ensure data consistency.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -2245,7 +2357,7 @@
                             <li>Conducted user research and synthesized insights to drive design decisions across mobile
                                 and web products.</li>
                             <li>Created wireframes, user flows, and high-fidelity prototypes in Figma for FuelOnGo and
-                                dashboard projects.</li>
+                                sportswear mobile app projects.</li>
                             <li>Built a scalable design system with reusable component library, token-based styling, and
                                 documentation.</li>
                             <li>Designed responsive layouts for mobile-first experiences, prioritizing accessibility and
