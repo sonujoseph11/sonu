@@ -238,6 +238,7 @@
             justify-content: center;
             align-items: center;
             perspective: 1000px;
+            transform: translateX(-40px);
         }
 
         .globe-container {
@@ -250,20 +251,55 @@
             align-items: center;
         }
 
-        .globe-container::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            border-radius: 50%;
-            border: 1px dashed rgba(0, 212, 255, 0.08);
-            animation: spinGlobe 50s linear infinite;
-            pointer-events: none;
+        .globe-country {
+            transition: fill 140ms ease, filter 140ms ease;
         }
 
-        @keyframes spinGlobe {
+        .globe-country:hover {
+            filter: brightness(1.18);
+        }
+
+        @keyframes mm-pulse {
+
+            0%,
             100% {
-                transform: rotate(360deg)
+                transform: scale(1);
+                opacity: 0.55;
             }
+
+            50% {
+                transform: scale(1.6);
+                opacity: 0.05;
+            }
+        }
+
+        .beacon-pulse {
+            animation: mm-pulse 2.4s ease-out infinite;
+            transform-box: fill-box;
+            transform-origin: center;
+        }
+
+        .globe-tooltip {
+            position: absolute;
+            background: rgba(18, 20, 23, 0.92);
+            color: #e7ece9;
+            border: 1px solid rgba(140, 150, 145, 0.32);
+            border-radius: 10px;
+            padding: 8px 12px;
+            pointer-events: none;
+            z-index: 20;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+            max-width: 220px;
+            font-size: 11px;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            transform: translateY(-100%);
+            font-family: 'JetBrains Mono', monospace;
         }
 
         .hero-eyebrow {
@@ -1859,7 +1895,8 @@
 
             .hero-globe-wrapper {
                 order: -1;
-                margin-bottom: 16px
+                margin-bottom: 16px;
+                transform: none;
             }
         }
 
@@ -2005,8 +2042,112 @@
                 </div>
             </div>
             <div class="hero-globe-wrapper reveal">
-                <div class="globe-container">
-                    <canvas id="globe-canvas"></canvas>
+                <div class="globe-container" id="globe-container">
+                    <!-- Loading state indicator -->
+                    <div id="globe-loading"
+                        style="position: absolute; display: flex; align-items: center; justify-content: center; color: rgba(216,221,217,0.4); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'JetBrains Mono', monospace; pointer-events: none;">
+                        Loading globe data…
+                    </div>
+                    <!-- Error state indicator -->
+                    <div id="globe-error"
+                        style="position: absolute; display: none; align-items: center; justify-content: center; flex-direction: column; gap: 6px; color: rgba(255,107,107,0.7); font-size: 11px; font-family: 'JetBrains Mono', monospace; pointer-events: none;">
+                        <span>Map data unavailable</span>
+                        <span style="font-size: 9px; opacity: 0.6;">Check internet connection</span>
+                    </div>
+                    <!-- The new SVG globe -->
+                    <svg id="globe-svg"
+                        style="display: block; width: 100%; height: 100%; cursor: grab; will-change: transform; transform: translateZ(0); backface-visibility: hidden; overflow: visible !important;">
+                        <defs>
+                            <filter id="fG" x="-200%" y="-200%" width="500%" height="500%">
+                                <feGaussianBlur stdDeviation="3" result="b" />
+                                <feMerge>
+                                    <feMergeNode in="b" />
+                                    <feMergeNode in="SourceGraphic" />
+                                </feMerge>
+                            </filter>
+                            <filter id="fL" x="-50%" y="-50%" width="200%" height="200%">
+                                <feGaussianBlur stdDeviation="3" result="b" />
+                                <feColorMatrix in="b" type="matrix"
+                                    values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.16 0" />
+                            </filter>
+
+                            <!-- Subtle ambient lighting on the disc -->
+                            <radialGradient id="gShade" cx="38%" cy="32%" r="78%">
+                                <stop offset="0%" stop-color="rgba(255, 255, 255, 0.12)" />
+                                <stop offset="55%" stop-color="rgba(255, 255, 255, 0.0)" />
+                                <stop offset="92%" stop-color="rgba(0, 0, 0, 0.32)" />
+                                <stop offset="100%" stop-color="rgba(0, 0, 0, 0.55)" />
+                            </radialGradient>
+
+                            <!-- Atmosphere halo -->
+                            <radialGradient id="gAtm" cx="50%" cy="50%" r="50%">
+                                <stop offset="0%" stop-color="rgba(0, 212, 255, 0)" />
+                                <stop id="gAtm-stop1" offset="65%" stop-color="rgba(0, 212, 255, 0)" />
+                                <stop id="gAtm-stop2" offset="68%" stop-color="rgba(0, 212, 255, 0.22)" />
+                                <stop offset="100%" stop-color="rgba(0, 212, 255, 0)" />
+                            </radialGradient>
+
+                            <!-- Subtle ocean tonal gradient -->
+                            <linearGradient id="gO" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="rgba(0, 212, 255, 0.08)" />
+                                <stop offset="50%" stop-color="rgba(13, 27, 62, 0.0)" />
+                                <stop offset="100%" stop-color="rgba(10, 15, 30, 0.4)" />
+                            </linearGradient>
+
+                            <!-- Disc clip — confines geometry inside the globe outline -->
+                            <clipPath id="clipDisc">
+                                <circle id="clip-disc-circle" cx="180" cy="180" r="110" />
+                            </clipPath>
+                        </defs>
+
+                        <!-- Atmosphere halo -->
+                        <circle id="atm-circle" cx="180" cy="180" r="240" fill="url(#gAtm)" pointer-events="none" />
+
+                        <!-- Ocean disc -->
+                        <circle id="shadow-circle-1" cx="180" cy="180" r="110" fill="#0c1020" />
+                        <circle id="shadow-circle-2" cx="180" cy="180" r="110" fill="url(#gO)" />
+
+                        <!-- Clipped country geometry -->
+                        <g clip-path="url(#clipDisc)">
+                            <!-- Soft land glow -->
+                            <g id="globe-shadow-countries" opacity="0.07" filter="url(#fL)"></g>
+
+                            <!-- Latitude/Longitude Graticule Grid -->
+                            <path id="globe-grid" fill="none" stroke="rgba(139, 92, 246, 0.15)" stroke-width="0.5"
+                                stroke-opacity="1" vector-effect="non-scaling-stroke" pointer-events="none" />
+
+                            <!-- Visible Country Paths -->
+                            <g id="globe-countries"></g>
+                        </g>
+
+                        <!-- Globe shading overlay -->
+                        <circle id="shade-circle" cx="180" cy="180" r="110" fill="url(#gShade)" pointer-events="none" />
+
+                        <!-- Crisp outer limb border -->
+                        <circle id="limb-circle" cx="180" cy="180" r="110" fill="none" stroke="rgba(0, 212, 255, 0.3)"
+                            stroke-width="1" pointer-events="none" />
+
+                        <!-- Markers Group -->
+                        <g id="globe-markers">
+                            <g id="globe-marker" style="cursor: pointer; opacity: 0; display: none;">
+                                <!-- Pulse ring -->
+                                <circle class="beacon-pulse" r="7" fill="rgba(255, 59, 48, 0.55)" />
+                                <!-- Outer glow -->
+                                <circle r="10.5" fill="rgba(255, 59, 48, 0.14)" />
+                                <!-- Core -->
+                                <circle r="5" fill="#ff3b30" />
+                                <!-- Specular highlight -->
+                                <circle cx="-1.75" cy="-1.75" r="1.75" fill="rgba(255, 255, 255, 0.55)" />
+                                <!-- Text label -->
+                                <text x="11" y="3" fill="#e7ece9" font-size="10" font-weight="600"
+                                    font-family="'JetBrains Mono', monospace" letter-spacing="0.04em" stroke="#111417"
+                                    stroke-width="3" stroke-linejoin="round" paint-order="stroke"
+                                    style="pointer-events: none; user-select: none;">From Kerala, India</text>
+                            </g>
+                        </g>
+                    </svg>
+                    <!-- Marker/Country Tooltip -->
+                    <div id="globe-tooltip" class="globe-tooltip"></div>
                 </div>
             </div>
         </div>
@@ -2540,6 +2681,8 @@
             let W, H, mouse = { x: null, y: null };
             const crosses = [];
             const streams = [];
+            const bgStars = [];
+            const meteors = [];
 
             class GalaxyStar {
                 constructor(galaxy) {
@@ -2549,8 +2692,6 @@
                 reset() {
                     const d = Math.pow(Math.random(), 2.2);
                     this.d = d;
-                    const maxDist = Math.min(W, H) * 0.75;
-                    this.distance = d * maxDist;
 
                     const armIndex = Math.floor(Math.random() * this.galaxy.arms);
 
@@ -2596,9 +2737,11 @@
                     this.twinklePhase += this.twinkleSpeed;
                 }
                 draw(ctx, cx, cy, galaxyAngle) {
+                    const minDim = Math.min(W, H);
+                    const distance = this.d * minDim * 0.75;
                     const angle = this.theta + galaxyAngle * this.speedMultiplier;
-                    const x = cx + Math.cos(angle) * this.distance;
-                    const y = cy + Math.sin(angle) * this.distance;
+                    const x = cx + Math.cos(angle) * distance;
+                    const y = cy + Math.sin(angle) * distance;
 
                     if (x < -10 || x > W + 10 || y < -10 || y > H + 10) return;
 
@@ -2695,21 +2838,42 @@
             }
 
             const galaxy = new Galaxy();
+            let lastW = 0;
+            let lastH = 0;
 
             function resize() {
-                W = canvas.width = window.innerWidth;
-                H = canvas.height = window.innerHeight;
+                const parent = canvas.parentElement;
+                const newW = parent.offsetWidth || window.innerWidth;
+                const newH = parent.offsetHeight || window.innerHeight;
 
-                crosses.length = 0;
-                const crossCount = Math.floor((W * H) / 50000);
-                for (let i = 0; i < Math.max(15, Math.min(crossCount, 40)); i++) {
-                    crosses.push(new Cross());
-                }
+                if (newW === lastW && newH === lastH) return;
+
+                W = canvas.width = newW;
+                H = canvas.height = newH;
 
                 galaxy.cx = galaxy.targetCx = W / 2;
                 galaxy.cy = galaxy.targetCy = H / 2;
 
-                galaxy.populate();
+                if (bgStars.length === 0) {
+                    const crossCount = Math.floor((W * H) / 50000);
+                    for (let i = 0; i < Math.max(15, Math.min(crossCount, 40)); i++) {
+                        crosses.push(new Cross());
+                    }
+
+                    const bgStarCount = Math.floor((W * H) / 8000);
+                    for (let i = 0; i < Math.max(60, Math.min(bgStarCount, 180)); i++) {
+                        bgStars.push(new BackgroundStar());
+                    }
+
+                    for (let i = 0; i < 5; i++) {
+                        meteors.push(new Meteor());
+                    }
+
+                    galaxy.populate();
+                }
+
+                lastW = newW;
+                lastH = newH;
             }
             window.addEventListener('resize', resize, { passive: true });
             window.addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; }, { passive: true });
@@ -2717,8 +2881,8 @@
 
             class Cross {
                 constructor() {
-                    this.x = Math.random() * W;
-                    this.y = Math.random() * H;
+                    this.rx = Math.random();
+                    this.ry = Math.random();
                     this.size = 4;
                     this.alpha = Math.random() * 0.1;
                     this.phase = Math.random() * Math.PI * 2;
@@ -2729,14 +2893,37 @@
                     this.alpha = 0.03 + Math.sin(this.phase) * 0.08;
                 }
                 draw() {
+                    const x = this.rx * W;
+                    const y = this.ry * H;
                     ctx.strokeStyle = `rgba(0, 212, 255, ${this.alpha})`;
                     ctx.lineWidth = 0.5;
                     ctx.beginPath();
-                    ctx.moveTo(this.x - this.size, this.y);
-                    ctx.lineTo(this.x + this.size, this.y);
-                    ctx.moveTo(this.x, this.y - this.size);
-                    ctx.lineTo(this.x, this.y + this.size);
+                    ctx.moveTo(x - this.size, y);
+                    ctx.lineTo(x + this.size, y);
+                    ctx.moveTo(x, y - this.size);
+                    ctx.lineTo(x, y + this.size);
                     ctx.stroke();
+                }
+            }
+
+            class BackgroundStar {
+                constructor() {
+                    this.rx = Math.random();
+                    this.ry = Math.random();
+                    this.size = Math.random() * 1.0 + 0.2;
+                    this.alpha = Math.random() * 0.5 + 0.15;
+                    this.phase = Math.random() * Math.PI * 2;
+                    this.speed = Math.random() * 0.015 + 0.005;
+                }
+                tick() {
+                    this.phase += this.speed;
+                    this.alpha = 0.15 + Math.sin(this.phase) * 0.35;
+                }
+                draw() {
+                    ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(this.rx * W, this.ry * H, this.size, 0, Math.PI * 2);
+                    ctx.fill();
                 }
             }
 
@@ -2769,17 +2956,84 @@
                 }
             }
 
+            class Meteor {
+                constructor() {
+                    this.reset();
+                    this.x = Math.random() * W;
+                    this.y = Math.random() * H - H * 0.5;
+                }
+                reset() {
+                    this.x = Math.random() * (W * 1.2) - (W * 0.2);
+                    this.y = -150 - Math.random() * 150;
+                    this.length = Math.random() * 200 + 120;
+                    this.speed = Math.random() * 12 + 10;
+                    this.angle = (35 + Math.random() * 15) * Math.PI / 180;
+                    this.vx = Math.cos(this.angle) * this.speed;
+                    this.vy = Math.sin(this.angle) * this.speed;
+                    this.size = Math.random() * 1.5 + 1.0;
+                    this.alpha = Math.random() * 0.6 + 0.4;
+                    this.active = Math.random() < 0.25;
+                    this.trailColor = Math.random() < 0.5 ? '0, 212, 255' : '139, 92, 246';
+                }
+                tick() {
+                    if (!this.active) {
+                        if (Math.random() < 0.005) {
+                            this.active = true;
+                        }
+                        return;
+                    }
+                    this.x += this.vx;
+                    this.y += this.vy;
+                    if (this.y > H + 200 || this.x > W + 200) {
+                        this.reset();
+                    }
+                }
+                draw() {
+                    if (!this.active) return;
+
+                    const xTail = this.x - Math.cos(this.angle) * this.length;
+                    const yTail = this.y - Math.sin(this.angle) * this.length;
+
+                    const grad = ctx.createLinearGradient(this.x, this.y, xTail, yTail);
+                    grad.addColorStop(0, `rgba(255, 255, 255, ${this.alpha})`);
+                    grad.addColorStop(0.1, `rgba(${this.trailColor}, ${this.alpha * 0.8})`);
+                    grad.addColorStop(0.5, `rgba(${this.trailColor}, ${this.alpha * 0.3})`);
+                    grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+                    ctx.strokeStyle = grad;
+                    ctx.lineWidth = this.size;
+                    ctx.lineCap = 'round';
+                    ctx.beginPath();
+                    ctx.moveTo(this.x, this.y);
+                    ctx.lineTo(xTail, yTail);
+                    ctx.stroke();
+
+                    ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha})`;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 1.5, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = `rgba(${this.trailColor}, ${this.alpha * 0.35})`;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.size * 3.5, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            }
+
             resize();
             for (let i = 0; i < 4; i++) streams.push(new Stream());
 
             (function loop() {
                 ctx.clearRect(0, 0, W, H);
 
+                bgStars.forEach(s => { s.tick(); s.draw(); });
+
                 galaxy.update();
                 galaxy.draw(ctx);
 
                 crosses.forEach(c => { c.tick(); c.draw(); });
                 streams.forEach(s => { s.tick(); s.draw(); });
+                meteors.forEach(m => { m.tick(); m.draw(); });
 
                 requestAnimationFrame(loop);
             })();
@@ -2857,254 +3111,815 @@
             }
         }
 
-        /* ═══ RADAR GLOBE CANVAS ═══ */
+        /* ═══ INTERACTIVE 3D SVG GLOBE ═══ */
         (function () {
-            const canvas = document.getElementById('globe-canvas');
-            if (!canvas) return;
-            const ctx = canvas.getContext('2d');
+            const container = document.getElementById('globe-container');
+            const svg = document.getElementById('globe-svg');
+            if (!container || !svg) return;
 
+            const gridPath = document.getElementById('globe-grid');
+            const countriesGroup = document.getElementById('globe-countries');
+            const shadowGroup = document.getElementById('globe-shadow-countries');
+            const markerEl = document.getElementById('globe-marker');
+            const tooltipEl = document.getElementById('globe-tooltip');
+            const loadingEl = document.getElementById('globe-loading');
+            const errorEl = document.getElementById('globe-error');
+
+            const DATA_URL = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
+
+            /* Country Data mapping */
+            const CD = {
+                "004": ["AFG", "Afghanistan"],
+                "008": ["ALB", "Albania"],
+                "012": ["DZA", "Algeria"],
+                "024": ["AGO", "Angola"],
+                "032": ["ARG", "Argentina"],
+                "036": ["AUS", "Australia"],
+                "040": ["AUT", "Austria"],
+                "031": ["AZE", "Azerbaijan"],
+                "050": ["BGD", "Bangladesh"],
+                "056": ["BEL", "Belgium"],
+                "204": ["BEN", "Benin"],
+                "064": ["BTN", "Bhutan"],
+                "068": ["BOL", "Bolivia"],
+                "070": ["BIH", "Bosnia and Herz."],
+                "072": ["BWA", "Botswana"],
+                "076": ["BRA", "Brazil"],
+                "096": ["BRN", "Brunei"],
+                "100": ["BGR", "Bulgaria"],
+                "854": ["BFA", "Burkina Faso"],
+                "108": ["BDI", "Burundi"],
+                "116": ["KHM", "Cambodia"],
+                "120": ["CMR", "Cameroon"],
+                "124": ["CAN", "Canada"],
+                "140": ["CAF", "Central African Rep."],
+                "148": ["TCD", "Chad"],
+                "152": ["CHL", "Chile"],
+                "156": ["CHN", "China"],
+                "170": ["COL", "Colombia"],
+                "178": ["COG", "Congo"],
+                "180": ["COD", "Dem. Rep. Congo"],
+                "188": ["CRI", "Costa Rica"],
+                "384": ["CIV", "Côte d'Ivoire"],
+                "191": ["HRV", "Croatia"],
+                "192": ["CUB", "Cuba"],
+                "196": ["CYP", "Cyprus"],
+                "203": ["CZE", "Czechia"],
+                "208": ["DNK", "Denmark"],
+                "262": ["DJI", "Djibouti"],
+                "214": ["DOM", "Dominican Rep."],
+                "218": ["ECU", "Ecuador"],
+                "818": ["EGY", "Egypt"],
+                "222": ["SLV", "El Salvador"],
+                "226": ["GNQ", "Eq. Guinea"],
+                "232": ["ERI", "Eritrea"],
+                "233": ["EST", "Estonia"],
+                "748": ["SWZ", "Eswatini"],
+                "231": ["ETH", "Ethiopia"],
+                "242": ["FJI", "Fiji"],
+                "246": ["FIN", "Finland"],
+                "250": ["FRA", "France"],
+                "266": ["GAB", "Gabon"],
+                "270": ["GMB", "Gambia"],
+                "268": ["GEO", "Georgia"],
+                "276": ["DEU", "Germany"],
+                "288": ["GHA", "Ghana"],
+                "300": ["GRC", "Greece"],
+                "304": ["GRL", "Greenland"],
+                "320": ["GTM", "Guatemala"],
+                "324": ["GIN", "Guinea"],
+                "624": ["GNB", "Guinea-Bissau"],
+                "328": ["GUY", "Guyana"],
+                "332": ["HTI", "Haiti"],
+                "340": ["HND", "Honduras"],
+                "348": ["HUN", "Hungary"],
+                "352": ["ISL", "Iceland"],
+                "356": ["IND", "India"],
+                "360": ["IDN", "Indonesia"],
+                "364": ["IRN", "Iran"],
+                "368": ["IRQ", "Iraq"],
+                "372": ["IRL", "Ireland"],
+                "376": ["ISR", "Israel"],
+                "380": ["ITA", "Italy"],
+                "388": ["JAM", "Jamaica"],
+                "392": ["JPN", "Japan"],
+                "400": ["JOR", "Jordan"],
+                "398": ["KAZ", "Kazakhstan"],
+                "404": ["KEN", "Kenya"],
+                "408": ["PRK", "North Korea"],
+                "410": ["KOR", "South Korea"],
+                "414": ["KWT", "Kuwait"],
+                "417": ["KGZ", "Kyrgyzstan"],
+                "418": ["LAO", "Laos"],
+                "428": ["LVA", "Latvia"],
+                "422": ["LBN", "Lebanon"],
+                "426": ["LSO", "Lesotho"],
+                "430": ["LBR", "Liberia"],
+                "434": ["LBY", "Libya"],
+                "440": ["LTU", "Lithuania"],
+                "442": ["LUX", "Luxembourg"],
+                "450": ["MDG", "Madagascar"],
+                "454": ["MWI", "Malawi"],
+                "458": ["MYS", "Malaysia"],
+                "466": ["MLI", "Mali"],
+                "478": ["MRT", "Mauritania"],
+                "484": ["MEX", "Mexico"],
+                "498": ["MDA", "Moldova"],
+                "496": ["MNG", "Mongolia"],
+                "499": ["MNE", "Montenegro"],
+                "504": ["MAR", "Morocco"],
+                "508": ["MOZ", "Mozambique"],
+                "104": ["MMR", "Myanmar"],
+                "516": ["NAM", "Namibia"],
+                "524": ["NPL", "Nepal"],
+                "528": ["NLD", "Netherlands"],
+                "554": ["NZL", "New Zealand"],
+                "558": ["NIC", "Nicaragua"],
+                "562": ["NER", "Niger"],
+                "566": ["NGA", "Nigeria"],
+                "578": ["NOR", "Norway"],
+                "512": ["OMN", "Oman"],
+                "586": ["PAK", "Pakistan"],
+                "591": ["PAN", "Panama"],
+                "598": ["PNG", "Papua New Guinea"],
+                "600": ["PRY", "Paraguay"],
+                "604": ["PER", "Peru"],
+                "608": ["PHL", "Philippines"],
+                "616": ["POL", "Poland"],
+                "620": ["PRT", "Portugal"],
+                "634": ["QAT", "Qatar"],
+                "642": ["ROU", "Romania"],
+                "643": ["RUS", "Russia"],
+                "646": ["RWA", "Rwanda"],
+                "682": ["SAU", "Saudi Arabia"],
+                "686": ["SEN", "Senegal"],
+                "688": ["SRB", "Serbia"],
+                "694": ["SLE", "Sierra Leone"],
+                "702": ["SGP", "Singapore"],
+                "703": ["SVK", "Slovakia"],
+                "705": ["SVN", "Slovenia"],
+                "706": ["SOM", "Somalia"],
+                "710": ["ZAF", "South Africa"],
+                "728": ["SSD", "South Sudan"],
+                "724": ["ESP", "Spain"],
+                "144": ["LKA", "Sri Lanka"],
+                "729": ["SDN", "Sudan"],
+                "740": ["SUR", "Suriname"],
+                "752": ["SWE", "Sweden"],
+                "756": ["CHE", "Switzerland"],
+                "760": ["SYR", "Syria"],
+                "158": ["TWN", "Taiwan"],
+                "762": ["TJK", "Tajikistan"],
+                "834": ["TZA", "Tanzania"],
+                "764": ["THA", "Thailand"],
+                "626": ["TLS", "Timor-Leste"],
+                "768": ["TGO", "Togo"],
+                "780": ["TTO", "Trinidad and Tobago"],
+                "788": ["TUN", "Tunisia"],
+                "792": ["TUR", "Turkey"],
+                "795": ["TKM", "Turkmenistan"],
+                "800": ["UGA", "Uganda"],
+                "804": ["UKR", "Ukraine"],
+                "784": ["ARE", "UAE"],
+                "826": ["GBR", "United Kingdom"],
+                "840": ["USA", "United States"],
+                "858": ["URY", "Uruguay"],
+                "860": ["UZB", "Uzbekistan"],
+                "862": ["VEN", "Venezuela"],
+                "704": ["VNM", "Vietnam"],
+                "887": ["YEM", "Yemen"],
+                "894": ["ZMB", "Zambia"],
+                "716": ["ZWE", "Zimbabwe"],
+                "275": ["PSE", "Palestine"],
+                "807": ["MKD", "North Macedonia"],
+                "051": ["ARM", "Armenia"],
+                "112": ["BLR", "Belarus"],
+                "174": ["COM", "Comoros"],
+                "084": ["BLZ", "Belize"],
+                "090": ["SLB", "Solomon Islands"],
+                "540": ["NCL", "New Caledonia"],
+                "548": ["VUT", "Vanuatu"],
+                "010": ["ATA", "Antarctica"],
+                "-99": ["XKX", "Kosovo"]
+            };
+
+            /* Sphere projection math constants and functions */
+            const D2R = Math.PI / 180;
+            const R2D = 180 / Math.PI;
+
+            function clamp(v, lo, hi) {
+                return v < lo ? lo : v > hi ? hi : v;
+            }
+
+            function project(lng, lat, lambda, phi, gamma, R, cx, cy) {
+                const lr = (lng - lambda) * D2R;
+                const la = lat * D2R;
+                const cl = Math.cos(la);
+                const x0 = cl * Math.cos(lr);
+                const y0 = cl * Math.sin(lr);
+                const z0 = Math.sin(la);
+
+                const cp = Math.cos(phi * D2R);
+                const sp = Math.sin(phi * D2R);
+                const x1 = x0 * cp + z0 * sp;
+                const y1 = y0;
+                const z1 = -x0 * sp + z0 * cp;
+
+                const cg = Math.cos(gamma * D2R);
+                const sg = Math.sin(gamma * D2R);
+                const rx = x1;
+                const ry = y1 * cg - z1 * sg;
+                const rz = y1 * sg + z1 * cg;
+                return {
+                    sx: cx + R * ry,
+                    sy: cy - R * rz,
+                    rx,
+                    ry,
+                    rz,
+                    v: rx >= 0
+                };
+            }
+
+            function unproject(px, py, lambda, phi, gamma, R, cx, cy) {
+                const Ry = (px - cx) / R;
+                const Rz = -(py - cy) / R;
+                const r2 = Ry * Ry + Rz * Rz;
+                if (r2 > 1) return null;
+
+                const cg = Math.cos(gamma * D2R);
+                const sg = Math.sin(gamma * D2R);
+                const y1 = Ry * cg + Rz * sg;
+                const z1 = -Ry * sg + Rz * cg;
+
+                const x1 = Math.sqrt(Math.max(0, 1 - r2));
+
+                const cp = Math.cos(phi * D2R);
+                const sp = Math.sin(phi * D2R);
+                const x0 = x1 * cp - z1 * sp;
+                const y0 = y1;
+                const z0 = x1 * sp + z1 * cp;
+
+                const lat = Math.asin(clamp(z0, -1, 1)) * R2D;
+                let lng = Math.atan2(y0, x0) * R2D + lambda;
+                lng = ((((lng + 180) % 360) + 360) % 360) - 180;
+                return { lng, lat };
+            }
+
+            function limbIntersect(a, b, R, cx, cy) {
+                const dr = a.rx - b.rx;
+                if (Math.abs(dr) < 1e-12) return null;
+                const t = a.rx / dr;
+                if (t < 0 || t > 1) return null;
+                let ry = a.ry + t * (b.ry - a.ry);
+                let rz = a.rz + t * (b.rz - a.rz);
+                const norm = Math.sqrt(ry * ry + rz * rz);
+                if (norm < 1e-9) return null;
+                ry /= norm;
+                rz /= norm;
+                return {
+                    sx: cx + R * ry,
+                    sy: cy - R * rz,
+                    rx: 0,
+                    ry,
+                    rz,
+                    v: true
+                };
+            }
+
+            function ringToSegments(ring, lambda, phi, gamma, R, cx, cy) {
+                const n = ring.length;
+                if (n < 3) return [];
+                const proj = new Array(n);
+                let visCount = 0;
+                for (let i = 0; i < n; i++) {
+                    const p = ring[i];
+                    proj[i] = project(p[0], p[1], lambda, phi, gamma, R, cx, cy);
+                    if (proj[i].v) visCount++;
+                }
+                if (visCount === 0) return [];
+                if (visCount === n) return [proj.slice()];
+
+                let startIdx = -1;
+                for (let i = 0; i < n; i++) {
+                    if (!proj[i].v && proj[(i + 1) % n].v) {
+                        startIdx = i;
+                        break;
+                    }
+                }
+                if (startIdx === -1) return [proj.slice()];
+
+                const segments = [];
+                let cur = [];
+
+                for (let k = 0; k < n; k++) {
+                    const i = (startIdx + k) % n;
+                    const j = (startIdx + k + 1) % n;
+                    const A = proj[i];
+                    const B = proj[j];
+
+                    if (A.v && B.v) {
+                        cur.push(B);
+                    } else if (A.v && !B.v) {
+                        const inter = limbIntersect(A, B, R, cx, cy);
+                        if (inter) cur.push(inter);
+                        if (cur.length >= 2) segments.push(cur);
+                        cur = [];
+                    } else if (!A.v && B.v) {
+                        const inter = limbIntersect(A, B, R, cx, cy);
+                        if (inter) cur.push(inter);
+                        cur.push(B);
+                    }
+                }
+                return segments;
+            }
+
+            function segmentsToPath(segs) {
+                if (segs.length === 0) return "";
+                let out = "";
+                for (const seg of segs) {
+                    for (let i = 0; i < seg.length; i++) {
+                        const p = seg[i];
+                        out += (i === 0 ? "M" : "L") + p.sx.toFixed(1) + "," + p.sy.toFixed(1);
+                    }
+                    out += "Z";
+                }
+                return out;
+            }
+
+            function buildSphericalPath(type, coords, lambda, phi, gamma, R, cx, cy) {
+                if (!coords) return "";
+                if (type === "Polygon") {
+                    let out = "";
+                    for (const ring of coords) {
+                        out += segmentsToPath(ringToSegments(ring, lambda, phi, gamma, R, cx, cy));
+                    }
+                    return out;
+                }
+                if (type === "MultiPolygon") {
+                    let out = "";
+                    for (const poly of coords) {
+                        for (const ring of poly) {
+                            out += segmentsToPath(ringToSegments(ring, lambda, phi, gamma, R, cx, cy));
+                        }
+                    }
+                    return out;
+                }
+                return "";
+            }
+
+            function buildGraticule(lambda, phi, gamma, R, cx, cy) {
+                let out = "";
+                for (let lat = -60; lat <= 60; lat += 30) {
+                    let started = false;
+                    let prev = null;
+                    for (let lng = -180; lng <= 180; lng += 4) {
+                        const p = project(lng, lat, lambda, phi, gamma, R, cx, cy);
+                        if (p.v) {
+                            if (!started || (prev && !prev.v)) {
+                                out += "M" + p.sx.toFixed(1) + "," + p.sy.toFixed(1);
+                                started = true;
+                            } else {
+                                out += "L" + p.sx.toFixed(1) + "," + p.sy.toFixed(1);
+                            }
+                        }
+                        prev = p;
+                    }
+                }
+                for (let lng = -180; lng < 180; lng += 30) {
+                    let started = false;
+                    let prev = null;
+                    for (let lat = -80; lat <= 80; lat += 4) {
+                        const p = project(lng, lat, lambda, phi, gamma, R, cx, cy);
+                        if (p.v) {
+                            if (!started || (prev && !prev.v)) {
+                                out += "M" + p.sx.toFixed(1) + "," + p.sy.toFixed(1);
+                                started = true;
+                            } else {
+                                out += "L" + p.sx.toFixed(1) + "," + p.sy.toFixed(1);
+                            }
+                        }
+                        prev = p;
+                    }
+                }
+                return out;
+            }
+
+            /* TopoJSON Decoder */
+            function decArcs(t) {
+                const tf = t.transform;
+                if (!tf) return t.arcs;
+                const sx = tf.scale[0],
+                    sy = tf.scale[1],
+                    dx = tf.translate[0],
+                    dy = tf.translate[1];
+                return t.arcs.map(a => {
+                    let x = 0,
+                        y = 0;
+                    return a.map(p => {
+                        x += p[0];
+                        y += p[1];
+                        return [x * sx + dx, y * sy + dy];
+                    });
+                });
+            }
+
+            function resolveRing(idx, arcs) {
+                const out = [];
+                for (const i of idx) {
+                    const a = i >= 0 ? arcs[i] : arcs[~i].slice().reverse();
+                    for (let j = out.length > 0 ? 1 : 0; j < a.length; j++) out.push(a[j]);
+                }
+                return out;
+            }
+
+            function extractFeatures(t) {
+                const arcs = decArcs(t);
+                const gs = t.objects.countries?.geometries;
+                if (!gs) return [];
+                return gs.map(g => {
+                    let c = null;
+                    if (g.type === "Polygon")
+                        c = g.arcs.map(r => resolveRing(r, arcs));
+                    else if (g.type === "MultiPolygon")
+                        c = g.arcs.map(p => p.map(r => resolveRing(r, arcs)));
+                    return { id: String(g.id ?? ""), type: g.type, coords: c };
+                });
+            }
+
+            function pointInRing(x, y, ring) {
+                let inside = false;
+                const n = ring.length;
+                for (let i = 0, j = n - 1; i < n; j = i++) {
+                    const xi = ring[i][0],
+                        yi = ring[i][1];
+                    const xj = ring[j][0],
+                        yj = ring[j][1];
+                    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi)
+                        inside = !inside;
+                }
+                return inside;
+            }
+
+            function findCountryAt(lng, lat, index) {
+                for (const c of index) {
+                    if (lng < c.bbox.minLng || lng > c.bbox.maxLng) continue;
+                    if (lat < c.bbox.minLat || lat > c.bbox.maxLat) continue;
+                    let inside = false;
+                    for (const ring of c.rings) {
+                        if (pointInRing(lng, lat, ring)) inside = !inside;
+                    }
+                    if (inside) return c;
+                }
+                return null;
+            }
+
+            function mulberry32(seed) {
+                let s = seed >>> 0;
+                return () => {
+                    s = (s + 0x6d2b79f5) >>> 0;
+                    let t = s;
+                    t = Math.imul(t ^ (t >>> 15), t | 1);
+                    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+                    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+                };
+            }
+
+            /* Main State Variables */
             let R = 110;
             let cx = 180;
             let cy = 180;
-            const tilt = 0.41; // 23.4 degrees tilt (radians)
-            let alpha = 0; // Rotation angle
-            let pulse = 0; // Pulse for locator beacon
+            let lambda = 0;
+            let phi = 23.4; // initial tilt
+            let gamma = -10; // initial roll
 
-            // Kerala Coordinates (Lat N, Lon E)
-            const latK = 10.85 * Math.PI / 180;
-            const lonK = 76.27 * Math.PI / 180;
+            let dragActive = false;
+            let dragStartX = 0;
+            let dragStartY = 0;
+            let dragStartLambda = 0;
+            let dragStartPhi = 0;
 
-            // Star particles surrounding the globe
-            const stars = [];
-            const numStars = 50; // slightly more stars to populate the wider area
-            for (let i = 0; i < numStars; i++) {
-                stars.push({
-                    lat: (Math.random() - 0.5) * Math.PI,
-                    lon: Math.random() * Math.PI * 2,
-                    lonSpeed: (Math.random() - 0.5) * 0.002, // slow independent drift
-                    distFactor: 1.15 + Math.random() * 1.0, // distance multiplier (1.15R to 2.15R)
-                    size: 0.6 + Math.random() * 1.2,
-                    twinkleSpeed: 0.015 + Math.random() * 0.02,
-                    phase: Math.random() * Math.PI * 2,
-                    colorType: Math.random() < 0.65 ? 'rgba(0, 212, 255, 1)' : 'rgba(196, 181, 253, 1)' // Cyan or Lavender
-                });
-            }
+            let lastMouseX = null;
+            let lastMouseY = null;
+            let userInteractedTime = 0;
+            let isHoveringMarker = false;
+            let currentHoveredCountryId = null;
 
+            let countryIndex = [];
+            const dragSensitivity = 0.4;
+            const autoRotateSpeed = 6; // degrees per second
+            const idleMs = 1200;
+
+            const markers = [
+                {
+                    label: "From Kerala, India",
+                    description: "Cloud Operations Eng • Active",
+                    latitude: 10.8527,
+                    longitude: 76.2711,
+                    color: "#ff3b30"
+                }
+            ];
+
+            /* Initial static setups and star fields generation */
             function resize() {
-                const width = canvas.parentElement.clientWidth || 360;
-                canvas.width = width;
-                canvas.height = width;
-                R = width * 0.23; // slightly smaller globe to allow wide stars without clipping
+                const width = container.clientWidth || 360;
+                svg.setAttribute("width", width);
+                svg.setAttribute("height", width);
+                svg.setAttribute("viewBox", `0 0 ${width} ${width}`);
+
+                const pad = 12;
+                const innerSize = Math.max(0, width - pad * 2);
+                R = Math.max(20, innerSize / 2 - 8);
                 cx = width / 2;
                 cy = width / 2;
+
+                document.getElementById("clip-disc-circle")?.setAttribute("cx", cx);
+                document.getElementById("clip-disc-circle")?.setAttribute("cy", cy);
+                document.getElementById("clip-disc-circle")?.setAttribute("r", R);
+
+                document.getElementById("shadow-circle-1")?.setAttribute("cx", cx);
+                document.getElementById("shadow-circle-1")?.setAttribute("cy", cy);
+                document.getElementById("shadow-circle-1")?.setAttribute("r", R);
+
+                document.getElementById("shadow-circle-2")?.setAttribute("cx", cx);
+                document.getElementById("shadow-circle-2")?.setAttribute("cy", cy);
+                document.getElementById("shadow-circle-2")?.setAttribute("r", R);
+
+                document.getElementById("shade-circle")?.setAttribute("cx", cx);
+                document.getElementById("shade-circle")?.setAttribute("cy", cy);
+                document.getElementById("shade-circle")?.setAttribute("r", R);
+
+                document.getElementById("limb-circle")?.setAttribute("cx", cx);
+                document.getElementById("limb-circle")?.setAttribute("cy", cy);
+                document.getElementById("limb-circle")?.setAttribute("r", R);
+
+                document.getElementById("atm-circle")?.setAttribute("cx", cx);
+                document.getElementById("atm-circle")?.setAttribute("cy", cy);
+                document.getElementById("atm-circle")?.setAttribute("r", R + 40);
+
+                const stop1 = document.getElementById("gAtm-stop1");
+                const stop2 = document.getElementById("gAtm-stop2");
+                if (stop1 && stop2) {
+                    stop1.setAttribute("offset", ((R / (R + 40)) * 100).toFixed(1) + "%");
+                    stop2.setAttribute("offset", (((R + 6) / (R + 40)) * 100).toFixed(1) + "%");
+                }
             }
+
             resize();
             window.addEventListener('resize', resize, { passive: true });
 
-            function project(lat, lon, radius = R) {
-                const x0 = radius * Math.cos(lat) * Math.sin(lon + alpha);
-                const y0 = -radius * Math.sin(lat);
-                const z0 = radius * Math.cos(lat) * Math.cos(lon + alpha);
+            /* Fetch and process TopoJSON map data */
+            fetch(DATA_URL)
+                .then(res => {
+                    if (!res.ok) throw new Error();
+                    return res.json();
+                })
+                .then(topoData => {
+                    const feats = extractFeatures(topoData);
+                    countryIndex = [];
+                    for (const f of feats) {
+                        const pad3 = String(f.id).padStart(3, "0");
+                        const e = CD[pad3];
+                        const a3 = e ? e[0] : pad3;
+                        const nm = e ? e[1] : a3;
+                        if (a3 === "ATA") continue;
 
-                const x = x0 * Math.cos(tilt) - y0 * Math.sin(tilt);
-                const y = x0 * Math.sin(tilt) + y0 * Math.cos(tilt);
-                const z = z0;
+                        const rings = [];
+                        let minLng = Infinity, maxLng = -Infinity, minLat = Infinity, maxLat = -Infinity;
+                        const visit = (ring) => {
+                            rings.push(ring);
+                            for (const p of ring) {
+                                if (p[0] < minLng) minLng = p[0];
+                                if (p[0] > maxLng) maxLng = p[0];
+                                if (p[1] < minLat) minLat = p[1];
+                                if (p[1] > maxLat) maxLat = p[1];
+                            }
+                        };
+                        if (f.type === "Polygon") {
+                            for (const r of f.coords) visit(r);
+                        } else if (f.type === "MultiPolygon") {
+                            for (const poly of f.coords) {
+                                for (const r of poly) visit(r);
+                            }
+                        }
 
-                return { x, y, z };
-            }
-
-            function drawStars(drawBackground) {
-                stars.forEach(s => {
-                    s.lon += s.lonSpeed;
-                    s.phase += s.twinkleSpeed;
-
-                    const pt = project(s.lat, s.lon, R * s.distFactor);
-                    const isBackground = pt.z < 0;
-
-                    if (isBackground === drawBackground) {
-                        const alphaVal = 0.18 + Math.abs(Math.sin(s.phase)) * 0.75;
-                        ctx.fillStyle = s.colorType;
-
-                        // Draw star core
-                        ctx.beginPath();
-                        ctx.arc(cx + pt.x, cy + pt.y, s.size, 0, Math.PI * 2);
-                        ctx.save();
-                        ctx.globalAlpha = alphaVal;
-                        ctx.fill();
-
-                        // Faint outer glow
-                        ctx.beginPath();
-                        ctx.arc(cx + pt.x, cy + pt.y, s.size * 2.2, 0, Math.PI * 2);
-                        ctx.globalAlpha = alphaVal * 0.22;
-                        ctx.fill();
-                        ctx.restore();
+                        countryIndex.push({
+                            id: a3,
+                            name: nm,
+                            type: f.type,
+                            coords: f.coords,
+                            rings,
+                            bbox: { minLng, maxLng, minLat, maxLat }
+                        });
                     }
+
+                    initCountryPaths();
+                    if (loadingEl) loadingEl.style.display = "none";
+                })
+                .catch(() => {
+                    if (loadingEl) loadingEl.style.display = "none";
+                    if (errorEl) errorEl.style.display = "flex";
+                });
+
+            function initCountryPaths() {
+                countriesGroup.innerHTML = "";
+                shadowGroup.innerHTML = "";
+                countryIndex.forEach(c => {
+                    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    path.setAttribute("id", "c-" + c.id);
+                    path.setAttribute("class", "globe-country");
+                    path.setAttribute("fill", "#16223f");
+                    path.setAttribute("stroke", "rgba(0, 212, 255, 0.15)");
+                    path.setAttribute("stroke-width", "0.5");
+                    path.setAttribute("vector-effect", "non-scaling-stroke");
+                    path.style.cursor = "default";
+                    countriesGroup.appendChild(path);
+                    c.pathEl = path;
+
+                    const shadowPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                    shadowPath.setAttribute("id", "cs-" + c.id);
+                    shadowPath.setAttribute("fill", "#16223f");
+                    shadowPath.setAttribute("stroke", "none");
+                    shadowPath.setAttribute("pointer-events", "none");
+                    shadowGroup.appendChild(shadowPath);
+                    c.shadowEl = shadowPath;
                 });
             }
 
-            function drawGlobe() {
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                alpha += 0.005;
-                pulse += 0.045;
+            function setHoveredCountry(cId) {
+                if (currentHoveredCountryId === cId) return;
+                if (currentHoveredCountryId) {
+                    const prev = document.getElementById("c-" + currentHoveredCountryId);
+                    if (prev) prev.setAttribute("fill", "#16223f");
+                }
+                currentHoveredCountryId = cId;
+                if (currentHoveredCountryId) {
+                    const next = document.getElementById("c-" + currentHoveredCountryId);
+                    if (next) next.setAttribute("fill", "rgba(0, 212, 255, 0.35)");
+                }
+            }
 
-                // Draw background stars (behind the globe)
-                drawStars(true);
+            /* Tooltip Management */
+            function showMarkerTooltip(e) {
+                const rect = container.getBoundingClientRect();
+                const tx = e.clientX - rect.left + 14;
+                const ty = e.clientY - rect.top - 14;
+                tooltipEl.style.left = tx + "px";
+                tooltipEl.style.top = ty + "px";
+                tooltipEl.style.transform = "translateY(-100%)";
+                tooltipEl.style.opacity = "1";
+                tooltipEl.innerHTML = `
+                    <div style="font-size: 12px; font-weight: 700; letter-spacing: 0.04em; white-space: nowrap;">From Kerala, India</div>
+                    <div style="font-size: 10px; font-weight: 400; opacity: 0.65; letter-spacing: 0.02em; line-height: 1.35;">Cloud Operations Eng • Active</div>
+                `;
+            }
 
-                // Draw background atmosphere glow
-                const grad = ctx.createRadialGradient(cx, cy, R * 0.8, cx, cy, R * 1.25);
-                grad.addColorStop(0, 'rgba(0, 212, 255, 0.05)');
-                grad.addColorStop(0.5, 'rgba(139, 92, 246, 0.02)');
-                grad.addColorStop(1, 'rgba(3, 7, 18, 0)');
-                ctx.fillStyle = grad;
-                ctx.beginPath();
-                ctx.arc(cx, cy, R * 1.25, 0, Math.PI * 2);
-                ctx.fill();
+            function showCountryTooltip(x, y, name) {
+                tooltipEl.style.left = (x + 14) + "px";
+                tooltipEl.style.top = (y - 10) + "px";
+                tooltipEl.style.transform = "translateY(-100%)";
+                tooltipEl.style.opacity = "1";
+                tooltipEl.innerHTML = `
+                    <div style="font-size: 11px; font-weight: 600; letter-spacing: 0.03em; white-space: nowrap;">${name}</div>
+                `;
+            }
 
-                // Draw main outer silhouette sphere circle
-                ctx.strokeStyle = 'rgba(0, 212, 255, 0.22)';
-                ctx.lineWidth = 1.0;
-                ctx.beginPath();
-                ctx.arc(cx, cy, R, 0, Math.PI * 2);
-                ctx.stroke();
+            function hideTooltip() {
+                tooltipEl.style.opacity = "0";
+            }
 
-                // Draw tilted polar axis line
-                const axisLen = R * 1.22;
-                const topX = -axisLen * Math.sin(tilt);
-                const topY = -axisLen * Math.cos(tilt);
-                const botX = axisLen * Math.sin(tilt);
-                const botY = axisLen * Math.cos(tilt);
+            /* Drag Interaction Event Handlers */
+            svg.addEventListener("pointerdown", e => {
+                const rect = svg.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                const dx = mx - cx;
+                const dy = my - cy;
+                if (dx * dx + dy * dy > (R + 8) * (R + 8)) return;
 
-                // Back polar axis (fade)
-                ctx.strokeStyle = 'rgba(139, 92, 246, 0.15)';
-                ctx.lineWidth = 0.8;
-                ctx.beginPath();
-                ctx.moveTo(cx, cy);
-                ctx.lineTo(cx + topX, cy + topY);
-                ctx.stroke();
+                dragActive = true;
+                dragStartX = mx;
+                dragStartY = my;
+                dragStartLambda = lambda;
+                dragStartPhi = phi;
 
-                // Front polar axis
-                ctx.strokeStyle = 'rgba(0, 212, 255, 0.25)';
-                ctx.beginPath();
-                ctx.moveTo(cx, cy);
-                ctx.lineTo(cx + botX, cy + botY);
-                ctx.stroke();
+                try {
+                    svg.setPointerCapture(e.pointerId);
+                } catch (err) { }
 
-                // Parallels (circles of latitude)
-                const lats = [-60, -30, 0, 30, 60];
-                lats.forEach(l => {
-                    const latRad = l * Math.PI / 180;
+                setHoveredCountry(null);
+                hideTooltip();
+            });
 
-                    // Draw back parallel
-                    ctx.strokeStyle = 'rgba(0, 212, 255, 0.035)';
-                    ctx.lineWidth = 0.5;
-                    ctx.beginPath();
-                    for (let theta = 0; theta <= Math.PI * 2 + 0.1; theta += 0.08) {
-                        const pt = project(latRad, theta);
-                        if (pt.z <= 0) {
-                            ctx.lineTo(cx + pt.x, cy + pt.y);
-                        } else {
-                            ctx.moveTo(cx + pt.x, cy + pt.y);
-                        }
-                    }
-                    ctx.stroke();
+            svg.addEventListener("pointermove", e => {
+                const rect = svg.getBoundingClientRect();
+                const mx = e.clientX - rect.left;
+                const my = e.clientY - rect.top;
+                lastMouseX = mx;
+                lastMouseY = my;
 
-                    // Draw front parallel
-                    ctx.strokeStyle = l === 0 ? 'rgba(0, 212, 255, 0.16)' : 'rgba(0, 212, 255, 0.09)';
-                    ctx.lineWidth = l === 0 ? 0.7 : 0.5;
-                    ctx.beginPath();
-                    for (let theta = 0; theta <= Math.PI * 2 + 0.1; theta += 0.08) {
-                        const pt = project(latRad, theta);
-                        if (pt.z >= 0) {
-                            ctx.lineTo(cx + pt.x, cy + pt.y);
-                        } else {
-                            ctx.moveTo(cx + pt.x, cy + pt.y);
-                        }
-                    }
-                    ctx.stroke();
-                });
+                if (dragActive) {
+                    const dx = mx - dragStartX;
+                    const dy = my - dragStartY;
+                    lambda = dragStartLambda - dx * dragSensitivity;
+                    phi = clamp(dragStartPhi + dy * dragSensitivity, -85, 85);
+                }
+            });
 
-                // Meridians (circles of longitude)
-                const lons = [0, 45, 90, 135, 180, 225, 270, 315];
-                lons.forEach(lon => {
-                    const lonRad = lon * Math.PI / 180;
+            const onDragEnd = (e) => {
+                if (dragActive) {
+                    dragActive = false;
+                    userInteractedTime = performance.now();
+                    try {
+                        svg.releasePointerCapture(e.pointerId);
+                    } catch (err) { }
+                }
+            };
+            svg.addEventListener("pointerup", onDragEnd);
+            svg.addEventListener("pointercancel", onDragEnd);
 
-                    // Draw back meridian
-                    ctx.strokeStyle = 'rgba(0, 212, 255, 0.035)';
-                    ctx.lineWidth = 0.5;
-                    ctx.beginPath();
-                    for (let lat = -Math.PI / 2; lat <= Math.PI / 2 + 0.1; lat += 0.08) {
-                        const pt = project(lat, lonRad);
-                        if (pt.z <= 0) {
-                            ctx.lineTo(cx + pt.x, cy + pt.y);
-                        } else {
-                            ctx.moveTo(cx + pt.x, cy + pt.y);
-                        }
-                    }
-                    ctx.stroke();
+            svg.addEventListener("pointerleave", () => {
+                lastMouseX = null;
+                lastMouseY = null;
+                if (!dragActive) {
+                    setHoveredCountry(null);
+                    hideTooltip();
+                }
+            });
 
-                    // Draw front meridian
-                    ctx.strokeStyle = 'rgba(0, 212, 255, 0.09)';
-                    ctx.lineWidth = 0.5;
-                    ctx.beginPath();
-                    for (let lat = -Math.PI / 2; lat <= Math.PI / 2 + 0.1; lat += 0.08) {
-                        const pt = project(lat, lonRad);
-                        if (pt.z >= 0) {
-                            ctx.lineTo(cx + pt.x, cy + pt.y);
-                        } else {
-                            ctx.moveTo(cx + pt.x, cy + pt.y);
-                        }
-                    }
-                    ctx.stroke();
-                });
+            /* Marker Interactive Hooks */
+            markerEl.addEventListener("mouseenter", e => {
+                isHoveringMarker = true;
+                showMarkerTooltip(e);
+            });
+            markerEl.addEventListener("mousemove", e => {
+                showMarkerTooltip(e);
+            });
+            markerEl.addEventListener("mouseleave", () => {
+                isHoveringMarker = false;
+                hideTooltip();
+            });
 
-                // Locate Kerala
-                const kerala = project(latK, lonK);
-                const pulseRad = 3 + Math.abs(Math.sin(pulse)) * 8;
+            /* Render Loop */
+            let lastTime = performance.now();
+            function step(now) {
+                const dt = Math.min(0.05, (now - lastTime) / 1000);
+                lastTime = now;
 
-                if (kerala.z >= 0) {
-                    // 1. Pulse ring (neon red)
-                    ctx.strokeStyle = 'rgba(255, 59, 48, 0.55)';
-                    ctx.lineWidth = 1.0;
-                    ctx.beginPath();
-                    ctx.arc(cx + kerala.x, cy + kerala.y, pulseRad, 0, Math.PI * 2);
-                    ctx.stroke();
-
-                    // 2. Center dot (Kerala point)
-                    ctx.fillStyle = '#ff3b30';
-                    ctx.beginPath();
-                    ctx.arc(cx + kerala.x, cy + kerala.y, 4, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    // 3. Pointer callout line
-                    ctx.strokeStyle = 'rgba(0, 212, 255, 0.5)';
-                    ctx.lineWidth = 0.8;
-                    ctx.beginPath();
-                    ctx.moveTo(cx + kerala.x, cy + kerala.y);
-                    const px = cx + kerala.x + 25;
-                    const py = cy + kerala.y - 25;
-                    ctx.lineTo(px, py);
-                    ctx.lineTo(px + 40, py);
-                    ctx.stroke();
-
-                    // 4. Label text
-                    ctx.fillStyle = '#fff';
-                    ctx.font = "bold 9px 'JetBrains Mono', monospace";
-                    ctx.fillText("KERALA 📍", px + 4, py - 4);
-                } else {
-                    // Behind the globe (faded indicator)
-                    ctx.fillStyle = 'rgba(255, 59, 48, 0.18)';
-                    ctx.beginPath();
-                    ctx.arc(cx + kerala.x, cy + kerala.y, 3, 0, Math.PI * 2);
-                    ctx.fill();
+                const sinceUser = now - userInteractedTime;
+                if (!dragActive && sinceUser > idleMs) {
+                    lambda += autoRotateSpeed * dt;
                 }
 
-                // Draw foreground stars (in front of the globe)
-                drawStars(false);
+                // Update country paths if indexed
+                if (countryIndex.length > 0) {
+                    for (let i = 0; i < countryIndex.length; i++) {
+                        const c = countryIndex[i];
+                        const d = buildSphericalPath(c.type, c.coords, lambda, phi, gamma, R, cx, cy);
+                        if (c.pathEl) c.pathEl.setAttribute("d", d);
+                        if (c.shadowEl) c.shadowEl.setAttribute("d", d);
+                    }
+                }
 
-                requestAnimationFrame(drawGlobe);
+                // Update Graticule Grid lines
+                if (gridPath) {
+                    gridPath.setAttribute("d", buildGraticule(lambda, phi, gamma, R, cx, cy));
+                }
+
+                // Update markers
+                const m = markers[0];
+                const p = project(m.longitude, m.latitude, lambda, phi, gamma, R, cx, cy);
+                if (p.v) {
+                    const fade = clamp(p.rx * 4, 0, 1);
+                    markerEl.style.opacity = fade.toFixed(2);
+                    markerEl.style.display = "";
+                    markerEl.setAttribute("transform", `translate(${p.sx.toFixed(1)}, ${p.sy.toFixed(1)})`);
+                } else {
+                    markerEl.style.opacity = "0";
+                    markerEl.style.display = "none";
+                }
+
+                // Handle hovers on country layer if mouse is active and not on the marker
+                if (lastMouseX !== null && lastMouseY !== null && !dragActive && !isHoveringMarker && countryIndex.length > 0) {
+                    const ll = unproject(lastMouseX, lastMouseY, lambda, phi, gamma, R, cx, cy);
+                    if (ll) {
+                        const c = findCountryAt(ll.lng, ll.lat, countryIndex);
+                        if (c) {
+                            setHoveredCountry(c.id);
+                            showCountryTooltip(lastMouseX, lastMouseY, c.name);
+                        } else {
+                            setHoveredCountry(null);
+                            hideTooltip();
+                        }
+                    } else {
+                        setHoveredCountry(null);
+                        hideTooltip();
+                    }
+                }
+
+                requestAnimationFrame(step);
             }
 
-            drawGlobe();
+            requestAnimationFrame(step);
         })();
     </script>
 
