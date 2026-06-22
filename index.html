@@ -1982,10 +1982,148 @@
                 padding: 0 18px
             }
         }
+
+        /* ══════════════ CUSTOM CURSOR ══════════════ */
+        .custom-cursor-dot,
+        .custom-cursor-ring {
+            position: fixed;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 9999;
+            opacity: 0;
+            transform: translate3d(-50%, -50%, 0);
+            transition: opacity 0.3s ease;
+        }
+
+        .custom-cursor-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--cyan);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--cyan), 0 0 20px var(--cyan);
+            z-index: 10000;
+            transition:
+                opacity 0.3s ease,
+                background-color 0.3s ease,
+                box-shadow 0.3s ease,
+                transform 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .custom-cursor-ring {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            border: 1.5px solid rgba(0, 212, 255, 0.4);
+            background: rgba(0, 212, 255, 0.02);
+            mix-blend-mode: screen;
+            box-shadow: 0 0 8px rgba(0, 212, 255, 0.1);
+            transition:
+                opacity 0.3s ease,
+                width 0.3s cubic-bezier(0.25, 1, 0.5, 1),
+                height 0.3s cubic-bezier(0.25, 1, 0.5, 1),
+                border-color 0.3s ease,
+                background-color 0.3s ease,
+                box-shadow 0.3s ease;
+        }
+
+        /* Hover States */
+        .custom-cursor-dot.cursor-hover {
+            transform: translate3d(-50%, -50%, 0) scale(1.6);
+            background: var(--white);
+            box-shadow: 0 0 12px var(--white);
+        }
+
+        .custom-cursor-ring.cursor-hover {
+            width: 52px;
+            height: 52px;
+            border-color: var(--white);
+            background: rgba(255, 255, 255, 0.06);
+            border-style: double;
+            /* Gives a double border radar feel on hover */
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.15);
+        }
+
+        /* Hover Context Colors */
+        .custom-cursor-dot.hover-cyan {
+            background: var(--cyan);
+            box-shadow: 0 0 12px var(--cyan), 0 0 24px var(--cyan);
+        }
+
+        .custom-cursor-ring.hover-cyan {
+            border-color: var(--cyan);
+            background: rgba(0, 212, 255, 0.06);
+            box-shadow: 0 0 18px rgba(0, 212, 255, 0.25);
+        }
+
+        .custom-cursor-dot.hover-purple {
+            background: var(--purple);
+            box-shadow: 0 0 12px var(--purple), 0 0 24px var(--purple);
+        }
+
+        .custom-cursor-ring.hover-purple {
+            border-color: var(--purple);
+            background: rgba(139, 92, 246, 0.06);
+            box-shadow: 0 0 18px rgba(139, 92, 246, 0.25);
+        }
+
+        .custom-cursor-dot.hover-amber {
+            background: var(--amber);
+            box-shadow: 0 0 12px var(--amber), 0 0 24px var(--amber);
+        }
+
+        .custom-cursor-ring.hover-amber {
+            border-color: var(--amber);
+            background: rgba(245, 158, 11, 0.06);
+            box-shadow: 0 0 18px rgba(245, 158, 11, 0.25);
+        }
+
+        /* Click States */
+        .custom-cursor-ring.cursor-clicked {
+            width: 28px;
+            height: 28px;
+            background: rgba(0, 212, 255, 0.15);
+            border-color: var(--cyan);
+            box-shadow: 0 0 12px var(--cyan);
+            transform: translate3d(-50%, -50%, 0) scale(0.8);
+        }
+
+        /* Disable default cursor for fine-pointer desktop devices */
+        @media (pointer: fine) {
+
+            body,
+            a,
+            button,
+            input,
+            select,
+            textarea,
+            .btn-primary,
+            .btn-secondary,
+            .tab-btn,
+            .project-card,
+            .nav-logo,
+            .hamburger,
+            .contact-link {
+                cursor: none !important;
+            }
+        }
+
+        /* Hide custom cursor on touch screens */
+        @media (pointer: coarse) {
+
+            .custom-cursor-dot,
+            .custom-cursor-ring {
+                display: none !important;
+            }
+        }
     </style>
 </head>
 
 <body>
+
+    <!-- Custom Cursor elements -->
+    <div class="custom-cursor-dot" id="custom-cursor-dot"></div>
+    <div class="custom-cursor-ring" id="custom-cursor-ring"></div>
 
     <!-- Floating Availability Status Badge -->
     <div class="status-badge">
@@ -3949,6 +4087,131 @@
         </div>
     </div>
 
+    <!-- Custom Cursor Script -->
+    <script>
+        (function () {
+            // Check if pointer device is fine (desktop with mouse)
+            if (window.matchMedia("(pointer: coarse)").matches) return;
+
+            const dot = document.getElementById("custom-cursor-dot");
+            const ring = document.getElementById("custom-cursor-ring");
+
+            if (!dot || !ring) return;
+
+            let mouseX = -100;
+            let mouseY = -100;
+            let ringX = -100;
+            let ringY = -100;
+            let isVisible = false;
+
+            // Speed parameters for the lerp logic
+            const lerpSpeed = 0.16; // Outer ring speed
+
+            window.addEventListener("mousemove", (e) => {
+                mouseX = e.clientX;
+                mouseY = e.clientY;
+
+                if (!isVisible) {
+                    dot.style.opacity = "1";
+                    ring.style.opacity = "1";
+                    isVisible = true;
+                }
+            });
+
+            // Physics rendering loop
+            function updateCursor() {
+                // Lerp ring positions
+                ringX += (mouseX - ringX) * lerpSpeed;
+                ringY += (mouseY - ringY) * lerpSpeed;
+
+                // Position elements
+                dot.style.transform = `translate3d(calc(${mouseX}px - 50%), calc(${mouseY}px - 50%), 0)`;
+                ring.style.transform = `translate3d(calc(${ringX}px - 50%), calc(${ringY}px - 50%), 0)`;
+
+                requestAnimationFrame(updateCursor);
+            }
+            requestAnimationFrame(updateCursor);
+
+            // Handle mouse entering and leaving window viewport
+            document.addEventListener("mouseleave", () => {
+                dot.style.opacity = "0";
+                ring.style.opacity = "0";
+                isVisible = false;
+            });
+
+            document.addEventListener("mouseenter", () => {
+                dot.style.opacity = "1";
+                ring.style.opacity = "1";
+                isVisible = true;
+            });
+
+            // Click animations
+            window.addEventListener("mousedown", () => {
+                ring.classList.add("cursor-clicked");
+            });
+
+            window.addEventListener("mouseup", () => {
+                ring.classList.remove("cursor-clicked");
+            });
+
+            // Delegated hover interaction checks for all interactive elements
+            window.addEventListener("mouseover", (e) => {
+                const target = e.target;
+                if (!target) return;
+
+                // Find closest hoverable ancestor
+                const interactive = target.closest('a, button, .project-card, .skill-pill, .tag, .sc, .tab-btn, .beacon-pulse, .globe-country, .nav-logo, .hamburger');
+
+                if (interactive) {
+                    ring.classList.add("cursor-hover");
+                    dot.classList.add("cursor-hover");
+
+                    // Check contextual style zones
+                    const isCloud = interactive.classList.contains("cloud-card") ||
+                        interactive.classList.contains("btn-primary") ||
+                        interactive.closest(".cloud-cat") ||
+                        interactive.closest(".cloud-exp") ||
+                        interactive.classList.contains("cloud") ||
+                        interactive.classList.contains("nav-logo");
+
+                    const isDesign = interactive.classList.contains("design-card") ||
+                        interactive.closest(".design-cat") ||
+                        interactive.closest(".design-exp") ||
+                        interactive.classList.contains("design") ||
+                        interactive.classList.contains("btn-secondary");
+
+                    const isSql = interactive.classList.contains("sql-card") ||
+                        interactive.closest(".sql-cat");
+
+                    if (isCloud) {
+                        ring.classList.add("hover-cyan");
+                        dot.classList.add("hover-cyan");
+                    } else if (isDesign) {
+                        ring.classList.add("hover-purple");
+                        dot.classList.add("hover-purple");
+                    } else if (isSql) {
+                        ring.classList.add("hover-amber");
+                        dot.classList.add("hover-amber");
+                    }
+                }
+            });
+
+            window.addEventListener("mouseout", (e) => {
+                const target = e.target;
+                if (!target) return;
+
+                const interactive = target.closest('a, button, .project-card, .skill-pill, .tag, .sc, .tab-btn, .beacon-pulse, .globe-country, .nav-logo, .hamburger');
+                if (interactive) {
+                    const related = e.relatedTarget;
+                    // Only remove classes if we actually moved out of interactive bounds completely
+                    if (!related || !related.closest('a, button, .project-card, .skill-pill, .tag, .sc, .tab-btn, .beacon-pulse, .globe-country, .nav-logo, .hamburger')) {
+                        ring.classList.remove("cursor-hover", "hover-cyan", "hover-purple", "hover-amber");
+                        dot.classList.remove("cursor-hover", "hover-cyan", "hover-purple", "hover-amber");
+                    }
+                }
+            });
+        })();
+    </script>
 </body>
 
 </html>
